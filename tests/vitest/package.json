@@ -1,0 +1,17 @@
+{
+  "name": "payment-recon-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:psp": "vitest run mock-psp.test.ts",
+    "test:bank": "vitest run mock-bank.test.ts",
+    "test:scenarios": "vitest run fault-scenarios.test.ts",
+    "test:happy": "vitest run mock-psp.test.ts mock-bank.test.ts --reporter=verbose"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "typescript": "^5.4.0"
+  }
+}

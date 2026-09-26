@@ -3,3 +3,4 @@ packages:
   - "backend"
   - "backend/dev/stub-psp"
   - "frontend"
+  - "mocks/*"
