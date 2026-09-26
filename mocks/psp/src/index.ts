@@ -156,9 +156,13 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
     const faults = getFaultConfig();
     let settlements = getSettlements(query.since);
 
-    if (faults.settlementMismatch) {
-      // Randomly drop ~30% of rows to simulate missing settlement lines
-      settlements = settlements.filter(() => Math.random() * 100 >= 30);
+    if (faults.settlementMismatch && settlements.length > 0) {
+      // Randomly drop ~30% of rows, ensuring at least 1 row is dropped so CSV differs
+      let filtered = settlements.filter(() => Math.random() * 100 >= 30);
+      if (filtered.length === settlements.length) {
+        filtered = filtered.slice(0, -1);
+      }
+      settlements = filtered;
     }
 
     const rows = [SETTLEMENT_CSV_HEADER];
