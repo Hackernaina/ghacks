@@ -1,84 +1,194 @@
-# Mocks — PSP A, PSP B, bank (Person A)
+# Mock Services — PSPs & Bank
 
-These mock services exist so the backend can be tested against realistic
-failures. **The contracts you implement are in
-[`shared/README.md`](../shared/README.md) §2–§5.** Import the zod schemas from
-`@reconcile/shared` so your payloads can't drift from the contract.
+Mock payment infrastructure for simulating external financial entities, payment flows, asynchronous webhooks, settlement batches, and real-world network/operational faults.
 
-## What to build
+---
 
-| Service | Port | Endpoints |
-| --- | --- | --- |
-| PSP A | 4001 | `POST /v1/payments`, `GET /v1/payments?idempotency_key=`, `POST /v1/refunds`, `GET /v1/settlements?since=` |
-| PSP B | 4002 | Same as PSP A. It can be the same code with a different config: `pspId=psp_b`, refs prefixed `pb_` |
-| Bank | 4003 | `GET /statements?since=` |
+## Overview
 
-The PSPs also **send** signed webhooks to the backend:
+The mock suite contains two independent microservices built with **Fastify**:
+1. **Mock PSP (`@reconcile/mock-psp`)**: Simulates dual Payment Service Providers (**PSP A** on `:4001` and **PSP B** on `:4002`). Supports idempotent payment creation, state polling, HMAC-signed webhook delivery, settlement batch feeds, and controllable fault injection.
+2. **Mock Bank (`@reconcile/mock-bank`)**: Simulates core banking rail on `:4003`. Supports direct debit processing and settlement statement feeds (`GET /statements`).
 
 ```
-POST {CALLBACK_URL}/webhooks/psp_a          # or /webhooks/psp_b
-X-Signature: hex(HMAC_SHA256(secret, rawBody))
+                     ┌──────────────────┐
+                     │ Merchant Backend │
+                     └──────┬─────┬─────┘
+                            │     │
+            POST /v1/payments     POST /debit
+            GET  /v1/settlements  GET  /statements
+                            │     │
+            ┌───────────────▼┐   ┌▼────────────────┐
+            │ Mock PSP A / B │   │    Mock Bank    │
+            │  (:4001/:4002) │   │     (:4003)     │
+            └───────┬────────┘   └─────────────────┘
+                    │ (async HMAC webhook)
+                    ▼
+          /webhooks/{psp_id}
 ```
 
-- Default `CALLBACK_URL` is `http://localhost:3000`.
-- Secrets are `dev-secret-psp-a` and `dev-secret-psp-b`. Keep them overridable by env.
+---
 
-## Behaviour that must be right
+## Service Specifications
 
-- **Idempotency.** The same `Idempotency-Key` returns the same response and creates no new `pspRef`, unless `bypassIdempotency` is on.
-- **`eventId` is stable across redeliveries.** Duplicates reuse it. A genuinely new event gets a new one.
-- **`createdAt` is the real event time.** It must be preserved when events are delayed or reordered.
-- **CSV line identity is stable.** `(batch_id, line_no)` and `(statement_id, line_no)` must not change between requests. The backend re-reads overlapping windows and relies on this.
-- **The settlement → bank flow is realistic.** Every settled `psp_ref` eventually shows up as a bank `CREDIT`, unless a fault says otherwise.
-- **Money is integer paise.**
+### Default Ports & Identifiers
 
-## Fault injection
+| Service | Port | Default Identifier | Default Webhook Secret |
+| :--- | :--- | :--- | :--- |
+| **Mock PSP A** | `4001` | `psp_a` | `dev-secret-psp-a` |
+| **Mock PSP B** | `4002` | `psp_b` | `dev-secret-psp-b` |
+| **Mock Bank**  | `4003` | `bank`  | N/A |
 
-Toggle faults at runtime with `POST /admin/faults` (JSON, partial updates).
-Use these names. The backend's stub PSP uses the same ones, so tests and demo
-scripts work against both.
+---
 
-| Flag | Effect | Scenario it tests |
-| --- | --- | --- |
-| `dropResponse: boolean` | Process the payment, then hang or close without responding | Lost sync response → backend polls and recovers |
-| `webhookDuplicates: number` | Send each webhook N times with the same `eventId` | Dedup (ledger stays at 1 capture) |
-| `webhookDelayMs: number` | Delay webhook delivery | Late webhooks |
-| `webhookReorder: boolean` | Send `payment.failed` then `payment.succeeded`, with correct `createdAt`s | Out-of-order delivery |
-| `bypassIdempotency: boolean` | A repeated key creates a new `pspRef` | Double charge detection |
-| `notFoundForMs: number` | Status query returns 404 for this long after creation | NOT_FOUND grace period |
-| `settlementAmountDelta: number` | Add this many paise to settlement amounts | Amount mismatch |
+## 1. Mock PSP API (`:4001` / `:4002`)
 
-Ideas beyond the minimum, if you have time:
+### `POST /v1/payments`
+Creates a payment attempt or returns an existing payment if the idempotency key matches.
+* **Headers**: `Idempotency-Key: <orderId>:<attempt>` (e.g. `order-123:1`)
+* **Request Body**:
+  ```json
+  {
+    "orderId": "ord_1001",
+    "amount": 50000,
+    "currency": "INR",
+    "merchantPaymentId": "pay_1001",
+    "customerId": "cust_1001"
+  }
+  ```
+* **Response `200 OK`**:
+  ```json
+  {
+    "pspRef": "pa_a1b2c3d4",
+    "idempotencyKey": "ord-123:1",
+    "status": "SUCCEEDED",
+    "amount": 50000,
+    "currency": "INR",
+    "createdAt": "2026-09-27T02:00:00.000Z"
+  }
+  ```
+* **Asynchronous Webhook Trigger**: Upon successful creation, fires an HMAC-signed event to `$BACKEND_URL/webhooks/$PSP_ID`.
 
-- `failRate` / `status5xxRate`
-- `settlementSkip` (for SETTLEMENT_MISSING)
-- `bankSkip` (for BANK_NOT_CREDITED)
-- `settleFailedPayment` (for SETTLED_BUT_FAILED)
-- a `POST /admin/reset` endpoint
+### `GET /v1/payments?idempotency_key=<key>`
+Look up a payment's sync state by idempotency key.
+* **Response**: Stored `PspPaymentResponse` or `404 { "error": "NOT_FOUND" }`.
 
-If you add flags, tell Person C so the dashboard can expose them.
+### `GET /v1/settlements?since=<ISO_TIMESTAMP>`
+Returns settled transaction lines in CSV format for reconciliation.
+* **Headers**: `Content-Type: text/csv; charset=utf-8`
+* **CSV Columns**:
+  `batch_id,line_no,psp_ref,idempotency_key,order_id,amount,currency,status,settled_at`
 
-## Stack and setup
+### `POST /admin/faults`
+Inject operational faults into the PSP mock runtime.
+```json
+{
+  "dropPercent": 0,
+  "webhookDelayMs": 0,
+  "duplicatePercent": 0,
+  "reorderWebhooks": false,
+  "settlementMismatch": false,
+  "bypassIdempotency": false
+}
+```
 
-Use Node 20, TypeScript, Fastify and zod, the same stack as the backend.
-In-memory state is fine.
+### `POST /admin/reset`
+Clears in-memory idempotency records, settlement logs, and resets faults to default.
 
-1. Add `"mocks"` (or `"mocks/*"` if you make one package per service) to
-   [`pnpm-workspace.yaml`](../pnpm-workspace.yaml).
-2. Add `"@reconcile/shared": "workspace:*"` to your `package.json`.
+---
 
+## 2. Webhook Dispatcher
+
+When a payment is created, the PSP asynchronously dispatches a webhook to the backend ingestion endpoint:
+* **Target URL**: `${BACKEND_URL:-http://localhost:3000}/webhooks/${PSP_ID}`
+* **Headers**: `X-Signature: <hex(HMAC_SHA256(secret, rawBody))>`
+* **Payload**:
+  ```json
+  {
+    "eventId": "evt_9f8e7d6c",
+    "type": "payment.succeeded",
+    "createdAt": "2026-09-27T02:00:00.000Z",
+    "data": {
+      "pspRef": "pa_a1b2c3d4",
+      "idempotencyKey": "ord-123:1",
+      "orderId": "ord_1001",
+      "amount": 50000,
+      "currency": "INR",
+      "status": "SUCCEEDED"
+    }
+  }
+  ```
+* **Delivery Guarantees**: Retries up to 3 times with exponential backoff on non-2xx responses.
+
+---
+
+## 3. Mock Bank API (`:4003`)
+
+### `POST /debit`
+Records a direct account debit corresponding to a settlement reference.
+* **Request Body**:
+  ```json
+  {
+    "amount": 50000,
+    "currency": "INR",
+    "psp_ref": "pa_a1b2c3d4"
+  }
+  ```
+* **Response `200 OK`**:
+  ```json
+  {
+    "bankRef": "bnk_12345678"
+  }
+  ```
+
+### `GET /statements?since=<ISO_TIMESTAMP>`
+Exports bank account statement records in CSV format.
+* **Headers**: `Content-Type: text/csv; charset=utf-8`
+* **CSV Columns**:
+  `statement_id,line_no,psp_ref,amount,currency,type,credited_at`
+
+---
+
+## Fault Injection Reference
+
+The mocks support programmatic fault injection via `POST /admin/faults` to test edge cases:
+
+| Fault Flag | Type | Description |
+| :--- | :--- | :--- |
+| `dropPercent` | `number` (0–100) | Probabilistically returns `503 Service Unavailable` on payment creation to simulate network drop / timeout. |
+| `webhookDelayMs` | `number` (ms) | Delays outgoing webhook dispatch to simulate late asynchronous confirmation. |
+| `duplicatePercent` | `number` (0–100) | Probabilistically duplicates the outgoing webhook (same `eventId`) after 2 seconds. |
+| `bypassIdempotency` | `boolean` | Purges idempotency keys to simulate PSP-side cache eviction, testing double-charge detection. |
+| `settlementMismatch`| `boolean` | Drops ~30% of settlement records to simulate batch omission and trigger reconciliation discrepancies. |
+
+---
+
+## Running the Mocks
+
+### Prerequisites
+* Node.js 20+
+* pnpm 9+
+
+### Build
+From project root:
 ```bash
-pnpm install
-pnpm --filter @reconcile/shared build
+corepack pnpm --filter @reconcile/mock-psp build
+corepack pnpm --filter @reconcile/mock-bank build
 ```
 
-Until your mocks are ready, the backend develops against its own minimal stub
-in `backend/dev/stub-psp`. Yours replaces it for the demo, so match the
-contract exactly.
+### Start Services
 
-## Checking your mock against the backend
+**Mock PSP A (Port 4001):**
+```powershell
+$env:PSP_ID="psp_a"; $env:PORT="4001"; $env:WEBHOOK_SECRET_PSP_A="dev-secret-psp-a"; node mocks/psp/dist/index.js
+```
 
-1. Run the backend (see the [root README](../README.md)) with `PSP_A_URL=http://localhost:4001`.
-2. `POST /orders`, then `POST /orders/:id/pay`.
-3. Open `GET /admin/payments/:id`. You should see your `SYNC_RESPONSE` and `WEBHOOK` evidence in the timeline.
-4. A `401` from `/webhooks/psp_a` means the signature is wrong. Sign the exact bytes you send.
+**Mock PSP B (Port 4002):**
+```powershell
+$env:PSP_ID="psp_b"; $env:PORT="4002"; $env:WEBHOOK_SECRET_PSP_B="dev-secret-psp-b"; node mocks/psp/dist/index.js
+```
+
+**Mock Bank (Port 4003):**
+```powershell
+$env:PORT="4003"; node mocks/bank/dist/index.js
+```

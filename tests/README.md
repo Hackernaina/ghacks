@@ -1,104 +1,107 @@
-# Payment Recon — Test Suite
+# Payment Reconciliation — Test & Verification Suite
 
-Two formats. Same coverage. Drop into your monorepo at `/tests`.
+Comprehensive test suite verifying core payment lifecycle, idempotency guarantees, asynchronous webhook ingestions, and real-world failure reconciliation against live mock services.
 
-## Structure
+---
+
+## Directory Structure
 
 ```
 tests/
 ├── vitest/
-│   ├── mock-psp.test.ts       # PSP happy path + idempotency + fault injection
-│   ├── mock-bank.test.ts      # Bank happy path
-│   ├── fault-scenarios.test.ts # All 6 demo scenarios as assertions
-│   ├── vitest.config.ts
-│   └── package.json
+│   ├── mock-psp.test.ts         # PSP API contracts, idempotency strictness, HMAC signature checks
+│   ├── mock-bank.test.ts        # Bank debit and statement feed contracts
+│   ├── fault-scenarios.test.ts  # End-to-end integration tests for 6 failure scenarios
+│   ├── vitest.config.ts         # Vitest execution configuration
+│   └── package.json             # Test runner dependencies & scripts
 └── scripts/
-    ├── happy-path.sh          # curl-based happy path checks
-    └── scenarios.sh           # 6 one-click fault scenario runners
+    ├── happy-path.sh            # Smoke check for basic payment & settlement endpoints
+    └── scenarios.sh             # Scripted execution of the 6 fault demo scenarios
 ```
 
-## Setup
+---
+
+## Prerequisites
+
+Before running the integration tests, start the mock instances in separate terminals:
+
+| Mock Service | Port | Start Command |
+| :--- | :--- | :--- |
+| **PSP A** | `4001` | `$env:PSP_ID="psp_a"; $env:PORT="4001"; node mocks/psp/dist/index.js` |
+| **PSP B** | `4002` | `$env:PSP_ID="psp_b"; $env:PORT="4002"; node mocks/psp/dist/index.js` |
+| **Bank**  | `4003` | `$env:PORT="4003"; node mocks/bank/dist/index.js` |
+
+---
+
+## Running Integration Tests (Vitest)
+
+Navigate to `tests/vitest`:
 
 ```bash
-# Install test deps
-cd tests/vitest && npm install
-
-# Make scripts executable
-chmod +x tests/scripts/*.sh
+cd tests/vitest
 ```
 
-## Running
-
-### Vitest (TypeScript)
-
+### Run All Test Suites
+Runs PSP, Bank, and Scenario suites sequentially (avoiding concurrent fault state crosstalk):
 ```bash
-# All tests
-cd tests/vitest && npm test
-
-# One suite at a time
-npm run test:psp
-npm run test:bank
-npm run test:scenarios
-
-# Happy path only (fast pre-demo check)
-npm run test:happy
+corepack pnpm test
 ```
-
-### Shell scripts
-
+*Or directly via Vitest binary:*
 ```bash
-# Happy path (quick smoke test)
-./tests/scripts/happy-path.sh
-
-# Custom URLs
-./tests/scripts/happy-path.sh http://my-psp.render.com http://my-bank.render.com
-
-# Run one fault scenario
-./tests/scripts/scenarios.sh 1          # lost response
-./tests/scripts/scenarios.sh 2          # duplicate webhook
-./tests/scripts/scenarios.sh 3          # late webhook
-./tests/scripts/scenarios.sh 4          # out-of-order
-./tests/scripts/scenarios.sh 5          # failover double charge
-./tests/scripts/scenarios.sh 6          # settlement mismatch
-
-# Run all scenarios (this IS your demo script)
-./tests/scripts/scenarios.sh all
+../../mocks/psp/node_modules/.bin/vitest run --fileParallelism=false
 ```
 
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PSP_URL` / `PSP_A_URL` | `http://localhost:4001` | Mock PSP A |
-| `PSP_B_URL` | `http://localhost:4002` | Mock PSP B (failover) |
-| `BANK_URL` | `http://localhost:4003` | Mock Bank |
-| `WEBHOOK_SECRET` | `dev-secret-psp-a` | Shared HMAC secret (plain hex X-Signature) |
-
+### Run Individual Test Suites
 ```bash
-PSP_URL=https://psp-a.render.com npm test
+# PSP contract & fault checks (Port 4001)
+corepack pnpm test:psp
+
+# Bank contract & statement checks (Port 4003)
+corepack pnpm test:bank
+
+# 6 Edge Case Scenarios (Port 4001 & 4002)
+corepack pnpm test:scenarios
 ```
 
-## What each test covers
+---
 
-| Test | Covers |
-|---|---|
-| POST /v1/payments | Basic payment creation |
-| GET /v1/payments?idempotency_key=K | State query by key |
-| Idempotency same key → same pspRef | Core idempotency guarantee |
-| Idempotency different amount → original response | Idempotency strictness |
-| dropPercent=100 | Lost response / UNKNOWN state |
-| duplicatePercent=100 | Webhook dedup |
-| bypassIdempotency=true | Double charge via same PSP |
-| webhookDelayMs | Late webhook delivery |
-| reorderWebhooks | Out-of-order state machine |
-| settlementMismatch | Recon discrepancy detection |
-| HMAC signing | Webhook authenticity |
-| POST /debit | Bank debit |
-| GET /statements?since= | Bank statement feed |
+## Test Coverage Matrix
 
-## Notes
+### 1. Mock PSP (`mock-psp.test.ts`)
+* **Happy Path**: Verifies `POST /v1/payments` responds with `200 OK`, valid `pspRef` (`pa_...`), and `status: "SUCCEEDED"`.
+* **State Polling**: Ensures `GET /v1/payments?idempotency_key=K` returns stored payment records and `404 NOT_FOUND` for invalid keys.
+* **Idempotency Guarantees**: Confirms duplicate POSTs with the same idempotency key return the original payment response even if the payload amount differs.
+* **HMAC Signatures**: Validates webhook payload authenticity using `X-Signature` with plain hexadecimal digest (`HMAC-SHA256`).
+* **Settlement Feeds**: Verifies valid CSV output matching `SETTLEMENT_CSV_HEADER`.
 
-- Tests reset faults in `beforeEach`/`afterEach` — safe to run repeatedly
-- Scenario 5 (failover) requires PSP B to be running on `PSP_B_URL`
-- Shell scripts work on Mac and Linux; Windows users should use WSL or the Vitest suite
-- Timeout is set to 15s to accommodate fault injection delays
+### 2. Mock Bank (`mock-bank.test.ts`)
+* **Direct Debit**: Validates `POST /debit` requiring `amount`, `currency`, and `psp_ref`.
+* **Statement Feeds**: Validates `GET /statements?since=` returning sequential CSV records (`statement_id,line_no,psp_ref,amount,currency,type,credited_at`).
+* **Timestamp Windowing**: Confirms statement filters correctly exclude entries prior to the query window.
+
+### 3. Fault Scenarios (`fault-scenarios.test.ts`)
+
+| Scenario | Injected Fault | Expected System Behavior |
+| :--- | :--- | :--- |
+| **1. Lost Response** | `dropPercent: 100` | Payment request times out / drops; system reconciles state via background polling (`GET /v1/payments`). |
+| **2. Duplicate Webhook** | `duplicatePercent: 100` | Webhook dispatched multiple times; idempotency guarantees payment is recorded exactly once. |
+| **3. Late Webhook** | `webhookDelayMs: 10000` | POST `/v1/payments` returns synchronously; delayed webhook is reconciled cleanly later. |
+| **4. Out-of-Order Webhook** | `reorderWebhooks: true` | Webhooks delivered out of sequence do not regress terminal transaction states. |
+| **5. Failover Double Charge**| PSP A dropped $\rightarrow$ PSP B | Same key sent to backup PSP generates distinct `pspRef`; duplicate payment detection flags the anomaly. |
+| **6. Settlement Mismatch** | `settlementMismatch: true` | Settlement feed omits records; discrepancy detection identifies missing batch settlements. |
+
+---
+
+## Environment Configuration
+
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `PSP_URL` / `PSP_A_URL` | `http://localhost:4001` | URL for Primary PSP A |
+| `PSP_B_URL` | `http://localhost:4002` | URL for Failover PSP B |
+| `BANK_URL` | `http://localhost:4003` | URL for Mock Core Bank |
+| `WEBHOOK_SECRET` | `dev-secret-psp-a` | Secret for HMAC signature generation and validation |
+
+To run tests against remote deployments:
+```bash
+PSP_URL=https://psp-a.example.com BANK_URL=https://bank.example.com corepack pnpm test
+```
