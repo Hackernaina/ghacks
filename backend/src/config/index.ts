@@ -4,8 +4,11 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().default(3000),
   ROLE: z.enum(["api", "worker", "all"]).default("all"),
 
-  DATABASE_URL: z.string(),
-  DATABASE_LISTEN_URL: z.string().optional(),
+  DATABASE_URL: z.string().default("postgres://reconcile:reconcile@localhost:5433/reconcile"),
+  DATABASE_LISTEN_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 
   PSP_A_URL: z.string().default("http://localhost:4001"),
   PSP_B_URL: z.string().default("http://localhost:4002"),
@@ -34,7 +37,7 @@ const EnvSchema = z.object({
 
 export type Config = z.infer<typeof EnvSchema>;
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
     throw new Error(`Invalid environment configuration: ${parsed.error.message}`);
@@ -42,12 +45,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return parsed.data;
 }
 
-function webhookSecretFor(config: Config, psp: "psp_a" | "psp_b"): string {
+export function webhookSecretFor(config: Config, psp: "psp_a" | "psp_b"): string {
   return psp === "psp_a" ? config.WEBHOOK_SECRET_PSP_A : config.WEBHOOK_SECRET_PSP_B;
 }
 
-function pspUrlFor(config: Config, psp: "psp_a" | "psp_b"): string {
+export function pspUrlFor(config: Config, psp: "psp_a" | "psp_b"): string {
   return psp === "psp_a" ? config.PSP_A_URL : config.PSP_B_URL;
 }
 
-export { webhookSecretFor, pspUrlFor };
+export function listenUrlFor(config: Config): string {
+  return config.DATABASE_LISTEN_URL ?? config.DATABASE_URL;
+}
