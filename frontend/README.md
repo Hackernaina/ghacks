@@ -8,6 +8,35 @@ drift early.
 The backend runs on `http://localhost:3000`. Set the backend's `CORS_ORIGIN`
 to your dev origin, e.g. `http://localhost:5173`.
 
+## Scaffold already in place
+
+A working Vite + React scaffold is checked in (`src/App.tsx`, `Checkout.tsx`,
+`Ops.tsx`, `api.ts`). It compiles and builds today, but it's calling backend
+routes that don't exist until the backend reaches Phase 3+ (`/orders`,
+`/payments`, `/admin/*`) — so until then, requests will 404. Treat it as a
+head start, not a finished dashboard.
+
+```bash
+pnpm install
+pnpm --filter @reconcile/shared build
+pnpm --filter @reconcile/frontend dev     # http://localhost:5173, #ops for the dashboard
+```
+
+The dev server proxies `/orders`, `/payments`, `/admin`, `/webhooks`,
+`/healthz`, `/readyz` to the backend (`BACKEND_URL`, default `:3000`), and
+`/mock-a`, `/mock-b`, `/mock-bank` to Person A's mocks (`PSP_A_URL`,
+`PSP_B_URL`, `BANK_URL`, defaults `:4001`/`:4002`/`:4003`) — see
+`vite.config.ts` and `.env.example`. `api.ts` is typed against
+`@reconcile/shared`, so a contract change surfaces as a type error here, not a
+silent runtime mismatch.
+
+What's there and what's left:
+
+- **Checkout** (`Checkout.tsx`): create order → pay → subscribe to `/payments/:id/stream`, retry after `FAILED`. Works once the backend implements those routes.
+- **Ops dashboard** (`Ops.tsx`): stats, invariants, review queue with resolve actions, payments table with a state filter, and a payment-detail panel with the evidence timeline, ledger and cases. This is the piece to iterate on most — the timeline rendering is intentionally minimal (see shared §7 for the fuller rendering guide: badges, "delivered N× counted once", late-arrival flags).
+- **Fault injection panel** (bottom of Ops): posts directly to the mocks' `/admin/faults` (proxied via `/mock-a` / `/mock-b`). Only useful once Person A's mocks exist and implement that endpoint.
+- Not built yet: demo scenario buttons (Section "Demo scenarios" below still needs real UI), deployment config for the frontend itself (see Deployment below).
+
 ## Checkout UI
 
 1. Create an order with `POST /orders { customerId, amount, currency }`. The amount is in **paise**, so display it ÷ 100.

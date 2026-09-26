@@ -54,6 +54,8 @@ pnpm migrate                              # creates all tables
 pnpm seed                                 # optional: a few demo orders
 pnpm dev                                  # backend on :3000
 curl localhost:3000/readyz                # {"ok":true}
+
+pnpm dev:frontend                         # frontend on :5173 (checkout at /, dashboard at /#ops)
 ```
 
 > Postgres is exposed on host port **5433**, not 5432, so it doesn't clash with
@@ -69,7 +71,7 @@ curl localhost:3000/readyz                # {"ok":true}
 | Mock PSP B | 4002 | `PSP_B_URL` |
 | Mock bank | 4003 | `BANK_URL` |
 | Postgres | 5433 | `DATABASE_URL` |
-| Frontend (dev) | 5173 suggested | `CORS_ORIGIN` on the backend |
+| Frontend (dev) | 5173 | `CORS_ORIGIN` on the backend |
 
 ### Hosted Postgres (Supabase / Neon)
 

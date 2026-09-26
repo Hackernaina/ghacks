@@ -8,6 +8,7 @@
     "test": "pnpm --filter backend test",
     "test:int": "pnpm --filter backend test:int",
     "dev": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter @reconcile/frontend dev",
     "migrate": "pnpm --filter backend migrate",
     "seed": "pnpm --filter backend seed"
   }
