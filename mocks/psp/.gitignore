@@ -1,0 +1,19 @@
+# Dependency folder – rebuilt locally
+node_modules/
+
+# Build artefacts
+dist/
+out/
+build/
+
+# Test artefacts & coverage
+coverage/
+*.log
+.vscode/
+tmp/
+tmp/**
+
+# Local configuration / secrets
+.env
+.env.*
+.npmrc      # <-- ignore the local .npmrc you created
