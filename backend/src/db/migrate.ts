@@ -7,6 +7,7 @@ import { logger } from "../logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, "../../migrations");
+const MIGRATION_LOCK_ID = 727_274_001;
 
 async function ensureMigrationsTable(client: pg.PoolClient): Promise<void> {
   await client.query(`
@@ -23,6 +24,8 @@ export async function runMigrations(connectionString: string): Promise<string[]>
   try {
     const client = await pool.connect();
     try {
+      // Serializes concurrent runners (e.g. api and worker containers starting together).
+      await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_ID]);
       await ensureMigrationsTable(client);
       const { rows } = await client.query<{ name: string }>(
         "SELECT name FROM schema_migrations",
@@ -49,6 +52,7 @@ export async function runMigrations(connectionString: string): Promise<string[]>
         }
       }
     } finally {
+      await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_ID]);
       client.release();
     }
   } finally {
