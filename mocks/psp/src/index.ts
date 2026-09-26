@@ -19,6 +19,7 @@ import {
   type FaultConfig,
 } from "./store.js";
 import { fireWebhook } from "./webhooks.js";
+import { applyFaultMiddleware } from "./faults.js";
 
 export interface PspServerOptions {
   pspId?: "psp_a" | "psp_b";
@@ -43,6 +44,9 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
   const app = Fastify({
     logger: false,
   });
+
+  // Register fault-injection preHandler hook (dropPercent, bypassIdempotency)
+  applyFaultMiddleware(app, getFaultConfig);
 
   // Health check
   app.get("/healthz", async () => ({
@@ -153,13 +157,8 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
     let settlements = getSettlements(query.since);
 
     if (faults.settlementMismatch) {
-      // Modify settlements (alter amount or omit row) to simulate discrepancy
-      settlements = settlements.map((s, idx) => {
-        if (idx === 0) {
-          return { ...s, amount: s.amount + 500 };
-        }
-        return s;
-      });
+      // Randomly drop ~30% of rows to simulate missing settlement lines
+      settlements = settlements.filter(() => Math.random() * 100 >= 30);
     }
 
     const rows = [SETTLEMENT_CSV_HEADER];
