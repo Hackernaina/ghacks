@@ -1,0 +1,14 @@
+{
+  "name": "payment-reconciliation",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm --filter backend test",
+    "test:int": "pnpm --filter backend test:int",
+    "dev": "pnpm --filter backend dev",
+    "migrate": "pnpm --filter backend migrate",
+    "seed": "pnpm --filter backend seed"
+  }
+}
