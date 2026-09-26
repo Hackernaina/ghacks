@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@reconcile/shared": "workspace:*",
@@ -17,5 +18,8 @@
     "@types/node": "^20.14.15",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

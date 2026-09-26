@@ -12,14 +12,24 @@ import type {
   PspId,
 } from "@reconcile/shared";
 
-async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+// Empty = same origin (the dev server proxies to the backend). Set for a static deploy.
+const API_URL: string = import.meta.env.VITE_API_URL ?? "";
+const MOCK_URLS = {
+  "mock-a": import.meta.env.VITE_MOCK_A_URL || "/mock-a",
+  "mock-b": import.meta.env.VITE_MOCK_B_URL || "/mock-b",
+  "mock-bank": import.meta.env.VITE_MOCK_BANK_URL || "/mock-bank",
+} as const;
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
+
+const json = <T,>(path: string, init?: RequestInit) => request<T>(`${API_URL}${path}`, init);
 
 export const api = {
   createOrder: (body: { customerId: string; amount: number; currency: string }) =>
@@ -62,16 +72,15 @@ export const api = {
 
 /** Subscribes to a payment's SSE stream (Section 3.4: `payment` event, `PaymentView` payload). */
 export function subscribeToPayment(id: string, onUpdate: (p: PaymentView) => void): () => void {
-  const es = new EventSource(`/payments/${id}/stream`);
+  const es = new EventSource(`${API_URL}/payments/${id}/stream`);
   es.addEventListener("payment", (ev) => {
     onUpdate(JSON.parse((ev as MessageEvent).data) as PaymentView);
   });
   return () => es.close();
 }
 
-/** Direct calls to Person A's PSP/bank mocks (Section "Fault injection" in mocks/README.md),
- *  proxied in dev by vite.config.ts under /mock-a, /mock-b, /mock-bank. */
+/** Fault injection on the PSP/bank mocks (mocks/README.md). Proxied in dev; set VITE_MOCK_*_URL when deployed. */
 export const mocks = {
-  setFaults: (target: "mock-a" | "mock-b" | "mock-bank", faults: Record<string, unknown>) =>
-    json<unknown>(`/${target}/admin/faults`, { method: "POST", body: JSON.stringify(faults) }),
+  setFaults: (target: keyof typeof MOCK_URLS, faults: Record<string, unknown>) =>
+    request<unknown>(`${MOCK_URLS[target]}/admin/faults`, { method: "POST", body: JSON.stringify(faults) }),
 };

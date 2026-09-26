@@ -5,6 +5,8 @@ import type { Db } from "./pool.js";
 
 export const EVIDENCE_INSERTED = "evidence_inserted";
 export const PAYMENT_UPDATED = "payment_updated";
+/** A payment needs the worker's attention without new evidence (e.g. it just became UNKNOWN). */
+export const PAYMENT_DUE = "payment_due";
 
 export async function notify(db: Db, channel: string, payload: string): Promise<void> {
   await db.query("SELECT pg_notify($1, $2)", [channel, payload]);

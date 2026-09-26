@@ -12,7 +12,7 @@ because an event arrived more than once.**
 | --- | --- | --- |
 | [`/shared`](shared/README.md) | everyone (agreed in hour 0–1) | Contract types + zod schemas. **Single source of truth.** |
 | [`/mocks`](mocks/README.md) | Person A | Mock PSP A, PSP B and bank, with fault injection |
-| [`/backend`](backend/CLAUDE.md) | Person B | Vendor backend: ingestion, resolver, worker, ledger, admin API |
+| [`/backend`](backend/README.md) | Person B | Vendor backend: ingestion, resolver, worker, ledger, admin API |
 | [`/frontend`](frontend/README.md) | Person C | Checkout UI, admin dashboard, deployment |
 
 **Start with [`shared/README.md`](shared/README.md).** It covers every API,
@@ -45,18 +45,28 @@ why the admin dashboard can show a full **timeline** explaining every state.
 
 ```bash
 pnpm install
-pnpm --filter @reconcile/shared build     # other packages import the built contracts
+pnpm dev             # Postgres :5433 + migrations + stub PSP A :4001 + stub PSP B :4002 + backend :3000
+pnpm dev:frontend    # in a second terminal: checkout at http://localhost:5173, dashboard at /#ops
 
-docker-compose up -d postgres             # Postgres 16 on localhost:5433
-cp backend/.env.example backend/.env
-set -a; source backend/.env; set +a
-pnpm migrate                              # creates all tables
-pnpm seed                                 # optional: a few demo orders
-pnpm dev                                  # backend on :3000
-curl localhost:3000/readyz                # {"ok":true}
-
-pnpm dev:frontend                         # frontend on :5173 (checkout at /, dashboard at /#ops)
+pnpm test            # resolver unit + property tests
+pnpm test:int        # end-to-end tests against real Postgres + stub PSP
 ```
+
+Every setting has a working default. Copy `backend/.env.example` to
+`backend/.env` only to override something. Until Person A's mocks exist, the
+backend's stub PSPs stand in for them and support the same fault flags.
+
+## Status
+
+| Area | State |
+| --- | --- |
+| `/shared` contracts | Done |
+| Backend: pay flow, webhooks, CSV pollers, resolver, worker, ledger, review cases | Done, with unit, property and integration tests. See [`backend/README.md`](backend/README.md) |
+| Admin API (§3.5) + SSE | Done (in the backend) |
+| Frontend checkout + ops dashboard | Working against the real API; timeline rendering and demo buttons still to polish |
+| CI + Docker images | Done (`.github/workflows/ci.yml`, `backend/Dockerfile`, `backend/dev/stub-psp/Dockerfile`) |
+| Person A's mocks + scenario scripts | Not started. See [`mocks/README.md`](mocks/README.md) |
+| Hosting / deploy target, video | Not chosen yet |
 
 > Postgres is exposed on host port **5433**, not 5432, so it doesn't clash with
 > any local Postgres you already run. Connection string:

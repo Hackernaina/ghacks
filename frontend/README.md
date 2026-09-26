@@ -8,18 +8,16 @@ drift early.
 The backend runs on `http://localhost:3000`. Set the backend's `CORS_ORIGIN`
 to your dev origin, e.g. `http://localhost:5173`.
 
-## Scaffold already in place
+## Running it
 
-A working Vite + React scaffold is checked in (`src/App.tsx`, `Checkout.tsx`,
-`Ops.tsx`, `api.ts`). It compiles and builds today, but it's calling backend
-routes that don't exist until the backend reaches Phase 3+ (`/orders`,
-`/payments`, `/admin/*`) — so until then, requests will 404. Treat it as a
-head start, not a finished dashboard.
+A Vite + React app is checked in (`src/App.tsx`, `Checkout.tsx`, `Ops.tsx`,
+`api.ts`). It talks to the real backend: every route it calls exists, and the
+admin API endpoints are implemented in `backend/src/api/admin.ts`.
 
 ```bash
 pnpm install
-pnpm --filter @reconcile/shared build
-pnpm --filter @reconcile/frontend dev     # http://localhost:5173, #ops for the dashboard
+pnpm dev                                  # backend + stub PSPs + Postgres (see backend/README.md)
+pnpm dev:frontend                         # http://localhost:5173, #ops for the dashboard
 ```
 
 The dev server proxies `/orders`, `/payments`, `/admin`, `/webhooks`,
@@ -32,10 +30,20 @@ silent runtime mismatch.
 
 What's there and what's left:
 
-- **Checkout** (`Checkout.tsx`): create order → pay → subscribe to `/payments/:id/stream`, retry after `FAILED`. Works once the backend implements those routes.
-- **Ops dashboard** (`Ops.tsx`): stats, invariants, review queue with resolve actions, payments table with a state filter, and a payment-detail panel with the evidence timeline, ledger and cases. This is the piece to iterate on most — the timeline rendering is intentionally minimal (see shared §7 for the fuller rendering guide: badges, "delivered N× counted once", late-arrival flags).
-- **Fault injection panel** (bottom of Ops): posts directly to the mocks' `/admin/faults` (proxied via `/mock-a` / `/mock-b`). Only useful once Person A's mocks exist and implement that endpoint.
-- Not built yet: demo scenario buttons (Section "Demo scenarios" below still needs real UI), deployment config for the frontend itself (see Deployment below).
+- **Checkout** (`Checkout.tsx`) is built:
+  - creates an order, pays it, and follows the stream at `/payments/:id/stream`
+  - offers a retry after `FAILED`
+- **Ops dashboard** (`Ops.tsx`) is built:
+  - stats and invariants panels
+  - the review queue, with resolve actions and each case's suggested action
+  - the payments table, with a state filter
+  - a detail panel showing the evidence timeline, ledger and cases
+
+  The timeline is the piece to iterate on most. Its rendering is minimal; see shared §7 for the fuller guide (badges, "delivered N× counted once", late-arrival flags).
+- **Fault injection panel** (bottom of Ops) posts to `/admin/faults` on the mocks. It already works against the backend's stub PSPs, which implement the same flag names Person A's mocks will.
+- **Not built yet:**
+  - one-click demo scenario buttons. These depend on Person A's scenario scripts.
+  - payments-list pagination in the UI. The API returns `nextCursor`.
 
 ## Checkout UI
 
@@ -75,12 +83,21 @@ After each one, open the timeline and show the invariants going green.
 
 ## Deployment
 
-The backend will ship a Dockerfile and `.env.example` (phase 7). You'll need:
+What exists:
 
-- A Postgres 16 database. Local: `docker-compose up -d postgres`, port 5433. Hosted: Supabase or Neon.
-  - On hosted Postgres, the backend needs **two URLs**. `DATABASE_URL` can be the pooled one. `DATABASE_LISTEN_URL` must be the direct/session connection, because LISTEN/NOTIFY doesn't work through a transaction pooler.
-- The backend, reachable by the PSP mocks for webhooks at `/webhooks/:psp`.
-- The mocks, reachable by the backend at `PSP_A_URL`, `PSP_B_URL` and `BANK_URL`.
-- `CORS_ORIGIN` on the backend, set to the deployed frontend origin.
+- **CI.** `.github/workflows/ci.yml` runs on every push. It builds, typechecks and runs all tests, including the integration suite against a Postgres service, and it builds both Docker images.
+- **Backend image.** `backend/Dockerfile` applies migrations on start, and `/readyz` returns 200 once it's up. The full env list is in [`backend/.env.example`](../backend/.env.example).
+- **Frontend.** This is a static build: `pnpm --filter @reconcile/frontend build` produces `frontend/dist`. Set these first:
+  - `VITE_API_URL` to the deployed backend URL. Leave it empty if the frontend is served from the same origin as the backend.
+  - `VITE_MOCK_*_URL` for the fault panel.
 
-The full env var list is in [`backend/.env.example`](../backend/.env.example).
+What's still to choose (a team decision, not built):
+
+- **Hosting.** You need somewhere to run the backend container(s), Postgres 16 and a static host for `frontend/dist`. Once that's picked, the deploy is one extra CI job.
+- **Postgres.**
+  - Local: `docker-compose up -d postgres` (port 5433).
+  - Hosted (Supabase or Neon): the backend needs **two URLs**. `DATABASE_URL` can be the pooled one. `DATABASE_LISTEN_URL` must be the direct/session connection, because LISTEN/NOTIFY doesn't work through a transaction pooler.
+- **Wiring:**
+  - The PSP mocks must reach the backend's `/webhooks/:psp`.
+  - The backend must reach the mocks at `PSP_A_URL`, `PSP_B_URL` and `BANK_URL`.
+  - The backend's `CORS_ORIGIN` must be the deployed frontend origin.

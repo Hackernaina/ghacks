@@ -1,5 +1,5 @@
 import { listenUrlFor } from "../config/index.js";
-import { EVIDENCE_INSERTED, PgListener } from "../db/notify.js";
+import { EVIDENCE_INSERTED, PAYMENT_DUE, PgListener } from "../db/notify.js";
 import { pollAllFeeds } from "../ingestion/pollers.js";
 import { logger } from "../logger.js";
 import { sweepOrphans } from "./orphans.js";
@@ -82,10 +82,12 @@ export async function startWorker(deps: WorkerDeps, opts: { pollFeeds?: boolean 
     for (const id of await sweepOrphans(pool)) enqueue(id);
   }
 
-  const listener = new PgListener(listenUrlFor(config), [EVIDENCE_INSERTED]);
-  listener.on(EVIDENCE_INSERTED, (payload: string) => {
+  const listener = new PgListener(listenUrlFor(config), [EVIDENCE_INSERTED, PAYMENT_DUE]);
+  const onPaymentId = (payload: string) => {
     if (payload && payload !== "orphan") enqueue(payload);
-  });
+  };
+  listener.on(EVIDENCE_INSERTED, onPaymentId);
+  listener.on(PAYMENT_DUE, onPaymentId);
   await listener.start();
 
   const sweepTimer = setInterval(() => {

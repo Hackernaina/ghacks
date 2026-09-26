@@ -80,7 +80,10 @@ export default function Ops() {
         {cases.map((c) => (
           <div key={c.id} className="row" style={{ marginBottom: 8 }}>
             <span className="pill warn">{c.caseType}</span>
-            <span className="muted">{c.summary}</span>
+            <span className="muted">
+              {c.summary}
+              {c.suggestedAction ? ` — ${c.suggestedAction}` : ""}
+            </span>
             <button className="ghost" onClick={() => resolve(c.id, "MARK_SUCCEEDED")}>
               Mark succeeded
             </button>

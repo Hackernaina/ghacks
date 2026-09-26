@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import type { Config } from "../config/index.js";
+import { notify, PAYMENT_DUE, PAYMENT_UPDATED } from "../db/notify.js";
 import type { PaymentRow } from "../db/rows.js";
 import { logger } from "../logger.js";
 import type { CreateOutcome, PspClient, QueryOutcome, RefundOutcome } from "../psp-client/client.js";
@@ -70,7 +71,7 @@ export async function recordCreateOutcome(
 
   logger.warn({ paymentId: payment.id, reason: outcome.reason }, "PSP create outcome unknown; not evidence");
   if (opts.markUnknownOnFailure) {
-    await pool.query(
+    const { rowCount } = await pool.query(
       `UPDATE payments
           SET state = 'UNKNOWN',
               next_check_at = now() + ($2::double precision * interval '1 millisecond'),
@@ -78,6 +79,11 @@ export async function recordCreateOutcome(
         WHERE id = $1 AND state IN ('CREATED', 'PENDING')`,
       [payment.id, config.POLL_BASE_MS],
     );
+    if (rowCount) {
+      logger.info({ paymentId: payment.id, to: "UNKNOWN" }, "payment state changed");
+      await notify(pool, PAYMENT_DUE, payment.id);
+      await notify(pool, PAYMENT_UPDATED, payment.id);
+    }
   }
 }
 

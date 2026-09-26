@@ -13,12 +13,16 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch"
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

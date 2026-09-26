@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/main.ts",
+    "dev": "bash scripts/dev.sh",
     "start": "node dist/main.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "test": "vitest run --exclude '**/*.int.test.ts'",
     "test:int": "vitest run -c vitest.int.config.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:api": "tsx watch src/main.ts"
   },
   "dependencies": {
     "@reconcile/shared": "workspace:*",
@@ -28,5 +29,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.1"
-  }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ]
 }
