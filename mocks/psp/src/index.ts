@@ -18,6 +18,7 @@ import {
   clearStore,
   type FaultConfig,
 } from "./store.js";
+import { fireWebhook } from "./webhooks.js";
 
 export interface PspServerOptions {
   pspId?: "psp_a" | "psp_b";
@@ -101,6 +102,13 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
     };
 
     addPayment(idempotencyKey, response);
+
+    // Fire webhook asynchronously (fire-and-forget, retries internally)
+    fireWebhook({
+      pspId,
+      webhookSecret,
+      payment: { ...response, orderId: body.orderId },
+    });
 
     // Record settlement
     const dateStr = createdAt.slice(0, 10).replace(/-/g, "");
