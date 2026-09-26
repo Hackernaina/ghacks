@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "test:watch": "vitest",
     "test:psp": "vitest run mock-psp.test.ts",
     "test:bank": "vitest run mock-bank.test.ts",

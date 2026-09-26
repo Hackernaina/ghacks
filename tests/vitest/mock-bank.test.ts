@@ -75,7 +75,7 @@ describe("Happy path — Mock Bank", () => {
   });
 
   it("multiple debits appear in statement feed", async () => {
-    const before = new Date().toISOString();
+    const before = new Date(Date.now() - 1000).toISOString();
     const ref1 = uniqueRef("multi1");
     const ref2 = uniqueRef("multi2");
 
