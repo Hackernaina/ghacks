@@ -70,6 +70,9 @@ Every setting has a working default. Copy `backend/.env.example` to
 `backend/.env` only to override something. `STUB=1 pnpm dev` runs the
 backend's stub PSPs instead of Person A's mocks.
 
+**Giving or watching a demo? See [`DEMO.md`](DEMO.md)** for the exact,
+tested steps and timings for every scenario.
+
 ## Status
 
 | Area | State |
