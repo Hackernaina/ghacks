@@ -45,16 +45,30 @@ why the admin dashboard can show a full **timeline** explaining every state.
 
 ```bash
 pnpm install
-pnpm dev             # Postgres :5433 + migrations + stub PSP A :4001 + stub PSP B :4002 + backend :3000
+pnpm dev             # Postgres :5433 + migrations + mock PSP A :4001, PSP B :4002, bank :4003 + backend :3000
 pnpm dev:frontend    # in a second terminal: checkout at http://localhost:5173, dashboard at /#ops
+```
 
+Or run everything in containers (Postgres, backend, the three mocks and the frontend on :5173):
+
+```bash
+COMPOSE_PARALLEL_LIMIT=1 docker-compose --profile stack up --build
+```
+
+The parallel limit makes image builds run one at a time. Several TypeScript
+builds at once can run a small Docker VM out of memory.
+
+Tests:
+
+```bash
 pnpm test            # resolver unit + property tests
-pnpm test:int        # end-to-end tests against real Postgres + stub PSP
+pnpm test:int        # backend end-to-end tests: real Postgres + the backend's stub PSP
+pnpm test:mocks      # Person A's mock tests (starts and stops the mocks itself)
 ```
 
 Every setting has a working default. Copy `backend/.env.example` to
-`backend/.env` only to override something. Until Person A's mocks exist, the
-backend's stub PSPs stand in for them and support the same fault flags.
+`backend/.env` only to override something. `STUB=1 pnpm dev` runs the
+backend's stub PSPs instead of Person A's mocks.
 
 ## Status
 
@@ -63,9 +77,9 @@ backend's stub PSPs stand in for them and support the same fault flags.
 | `/shared` contracts | Done |
 | Backend: pay flow, webhooks, CSV pollers, resolver, worker, ledger, review cases | Done, with unit, property and integration tests. See [`backend/README.md`](backend/README.md) |
 | Admin API (§3.5) + SSE | Done (in the backend) |
-| Frontend checkout + ops dashboard | Working against the real API; timeline rendering and demo buttons still to polish |
-| CI + Docker images | Done (`.github/workflows/ci.yml`, `backend/Dockerfile`, `backend/dev/stub-psp/Dockerfile`) |
-| Person A's mocks + scenario scripts | Not started. See [`mocks/README.md`](mocks/README.md) |
+| Mocks: PSP A/B, bank, fault injection | Done (Person A), wired to the backend. See [`mocks/README.md`](mocks/README.md) |
+| Frontend checkout + ops dashboard | Working against the real API and mocks. Timeline rendering and one-click scenario buttons still to polish |
+| CI + Docker | CI runs all four test suites; images for the backend, mocks, stub PSP and frontend; `docker-compose --profile stack` |
 | Hosting / deploy target, video | Not chosen yet |
 
 > Postgres is exposed on host port **5433**, not 5432, so it doesn't clash with

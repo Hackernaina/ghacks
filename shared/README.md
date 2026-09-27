@@ -180,6 +180,7 @@ stl_20260927_01,1,pa_7f3c…,…:1,…uuid…,150000,INR,SETTLED,2026-09-27T10:3
 ```
 
 - **`(batch_id, line_no)` identifies a line uniquely and must never change.** The backend deliberately re-reads overlapping windows.
+- **It must also never be reused for a different line, including after the mock restarts.** The backend's database outlives the mock's memory. Scoping by PSP is the backend's job, so both PSPs may use the same batch names.
 - `status` is always `SETTLED`. `amount` is in paise.
 - The `settlementAmountDelta` fault skews `amount` to test mismatch detection.
 
@@ -193,7 +194,7 @@ statement_id,line_no,psp_ref,amount,currency,type,credited_at
 stmt_20260927,1,pa_7f3c…,150000,INR,CREDIT,2026-09-27T11:00:00.000Z
 ```
 
-`(statement_id, line_no)` is the stable dedup key. `type` is always `CREDIT`.
+`(statement_id, line_no)` is the stable dedup key. It must never be reused for a different line, including after a restart. `type` is always `CREDIT`.
 
 ---
 
@@ -341,7 +342,7 @@ is [`backend/migrations/`](../backend/migrations/).
 | `WEBHOOK` | payload `eventId` |
 | `SYNC_RESPONSE` | `sync:${idemKey}:${requestSeq}` |
 | `STATUS_QUERY` | `poll:${idemKey}:${sha256(status+pspRef+amount)}` |
-| `SETTLEMENT` | `${batch_id}:${line_no}` |
+| `SETTLEMENT` | `${psp}:${batch_id}:${line_no}` |
 | `BANK_STATEMENT` | `${statement_id}:${line_no}` |
 | `MANUAL` | `manual:${caseId}` |
 

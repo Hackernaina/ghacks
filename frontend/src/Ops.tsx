@@ -194,77 +194,62 @@ export default function Ops() {
   );
 }
 
-/** Direct fault injection against Person A's mocks. See mocks/README.md. */
+/** Fault injection on Person A's PSP mocks (flag names from mocks/README.md). */
 function FaultPanel() {
   const [target, setTarget] = useState<"mock-a" | "mock-b">("mock-a");
-  const [dropResponse, setDropResponse] = useState(false);
-  const [webhookDuplicates, setWebhookDuplicates] = useState(0);
+  const [dropPercent, setDropPercent] = useState(0);
+  const [duplicatePercent, setDuplicatePercent] = useState(0);
   const [webhookDelayMs, setWebhookDelayMs] = useState(0);
-  const [webhookReorder, setWebhookReorder] = useState(false);
   const [bypassIdempotency, setBypassIdempotency] = useState(false);
+  const [settlementMismatch, setSettlementMismatch] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  async function apply() {
+  async function run(label: string, call: () => Promise<unknown>) {
     setStatus(null);
     try {
-      await mocks.setFaults(target, {
-        dropResponse,
-        webhookDuplicates,
-        webhookDelayMs,
-        webhookReorder,
-        bypassIdempotency,
-      });
-      setStatus("applied");
+      await call();
+      setStatus(label);
     } catch (e) {
       setStatus(`mock unreachable: ${String(e)}`);
     }
   }
 
+  const apply = () =>
+    run("applied", () =>
+      mocks.setFaults(target, { dropPercent, duplicatePercent, webhookDelayMs, bypassIdempotency, settlementMismatch }),
+    );
+
   return (
     <div className="card">
       <h2>Fault injection (mocks)</h2>
-      <p className="muted">
-        Requires Person A's PSP mocks running on :4001/:4002 (proxied via /mock-a, /mock-b in dev).
-      </p>
+      <p className="muted">Posts to the PSP mock's /admin/faults (proxied via /mock-a, /mock-b in dev).</p>
       <div className="row">
         <select value={target} onChange={(e) => setTarget(e.target.value as "mock-a" | "mock-b")}>
           <option value="mock-a">psp_a</option>
           <option value="mock-b">psp_b</option>
         </select>
         <label>
-          <input type="checkbox" checked={dropResponse} onChange={(e) => setDropResponse(e.target.checked)} /> drop
-          response
+          drop %{" "}
+          <input type="number" min={0} max={100} style={{ width: 70 }} value={dropPercent} onChange={(e) => setDropPercent(Number(e.target.value))} />
         </label>
         <label>
-          duplicates{" "}
-          <input
-            type="number"
-            style={{ width: 60 }}
-            value={webhookDuplicates}
-            onChange={(e) => setWebhookDuplicates(Number(e.target.value))}
-          />
+          duplicate webhook %{" "}
+          <input type="number" min={0} max={100} style={{ width: 70 }} value={duplicatePercent} onChange={(e) => setDuplicatePercent(Number(e.target.value))} />
         </label>
         <label>
-          delay ms{" "}
-          <input
-            type="number"
-            style={{ width: 80 }}
-            value={webhookDelayMs}
-            onChange={(e) => setWebhookDelayMs(Number(e.target.value))}
-          />
+          webhook delay ms{" "}
+          <input type="number" min={0} style={{ width: 90 }} value={webhookDelayMs} onChange={(e) => setWebhookDelayMs(Number(e.target.value))} />
         </label>
         <label>
-          <input type="checkbox" checked={webhookReorder} onChange={(e) => setWebhookReorder(e.target.checked)} /> reorder
+          <input type="checkbox" checked={bypassIdempotency} onChange={(e) => setBypassIdempotency(e.target.checked)} /> bypass idempotency
         </label>
         <label>
-          <input
-            type="checkbox"
-            checked={bypassIdempotency}
-            onChange={(e) => setBypassIdempotency(e.target.checked)}
-          />{" "}
-          bypass idempotency
+          <input type="checkbox" checked={settlementMismatch} onChange={(e) => setSettlementMismatch(e.target.checked)} /> settlement mismatch
         </label>
         <button onClick={apply}>Apply</button>
+        <button className="ghost" onClick={() => run("mock reset", () => mocks.reset(target))}>
+          Reset mock
+        </button>
       </div>
       {status && <p className="muted">{status}</p>}
     </div>

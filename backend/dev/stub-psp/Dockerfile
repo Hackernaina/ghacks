@@ -7,6 +7,8 @@ COPY shared/package.json shared/
 COPY backend/package.json backend/
 COPY backend/dev/stub-psp/package.json backend/dev/stub-psp/
 COPY frontend/package.json frontend/
+COPY mocks/psp/package.json mocks/psp/
+COPY mocks/bank/package.json mocks/bank/
 RUN pnpm install --frozen-lockfile
 COPY shared shared
 COPY backend/dev/stub-psp backend/dev/stub-psp

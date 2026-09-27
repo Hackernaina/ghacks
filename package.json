@@ -11,6 +11,7 @@
     "dev:frontend": "pnpm --filter @reconcile/frontend dev",
     "migrate": "pnpm --filter @reconcile/backend migrate",
     "seed": "pnpm --filter @reconcile/backend seed",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test:mocks": "bash tests/scripts/run-mock-tests.sh"
   }
 }

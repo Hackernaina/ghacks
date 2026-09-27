@@ -83,4 +83,5 @@ export function subscribeToPayment(id: string, onUpdate: (p: PaymentView) => voi
 export const mocks = {
   setFaults: (target: keyof typeof MOCK_URLS, faults: Record<string, unknown>) =>
     request<unknown>(`${MOCK_URLS[target]}/admin/faults`, { method: "POST", body: JSON.stringify(faults) }),
+  reset: (target: keyof typeof MOCK_URLS) => request<unknown>(`${MOCK_URLS[target]}/admin/reset`, { method: "POST", body: "{}" }),
 };

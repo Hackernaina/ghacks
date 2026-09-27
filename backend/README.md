@@ -10,20 +10,23 @@ statements and operator decisions. Contracts are in
 
 ```bash
 pnpm install
-pnpm dev          # Postgres (docker-compose) + stub PSP A :4001 + stub PSP B :4002 + backend :3000
+pnpm dev          # Postgres + mock PSP A :4001 + mock PSP B :4002 + mock bank :4003 + backend :3000
 ```
 
 `pnpm dev` does four things:
 
 - starts Postgres
 - builds `/shared` and applies migrations
-- runs both stubs
+- runs Person A's three mocks, with webhooks pointed at this backend
 - runs the backend in watch mode, with `ROLE=all` so the API and the worker share one process
 
 It reads `backend/.env` if present, and every variable has a working default.
 
-Stub PSP A also serves `/statements`, so it can act as the bank until Person A's
-bank mock exists. `pnpm dev` points `BANK_URL` at it unless you set `BANK_URL` yourself.
+`STUB=1 pnpm dev` runs the backend's own stub PSPs instead (`dev/stub-psp`).
+Stub PSP A also serves `/statements`, so in that mode it acts as the bank and
+`BANK_URL` points at it. The stubs also back `pnpm test:int`, because their faults
+are deterministic (for example, `dropResponse` processes the charge and then drops
+the connection). Person A's `dropPercent` is random and fails before processing.
 
 Other commands:
 
@@ -180,6 +183,7 @@ These are deliberate choices; change them in the named file if the team decides 
 | **Partial refunds aren't amount mismatches.** Refund amounts are excluded from the AMOUNT_MISMATCH check. | `resolver/checks.ts` |
 | **Unconfirmed refunds stay neutral.** A refund the PSP doesn't confirm is recorded as `PROCESSING` evidence, not as a claim about the charge. | `ingestion/outbound.ts` |
 | **Orphan cases can only be dismissed.** They have no payment to mark succeeded, failed or refunded. | `api/admin.ts` |
+| **Settlement keys include the PSP.** A SETTLEMENT line's dedup key is `${psp}:${batch_id}:${line_no}`, not `${batch_id}:${line_no}`, because each PSP names its own batches. With the unscoped key, PSP B's first line collided with PSP A's and was dropped as a duplicate. | `ingestion/pollers.ts` |
 | **Duplicate count is derived.** "Duplicates suppressed" is `SUM(evidence.duplicate_count)`, which is exact across processes and restarts. | `api/admin-queries.ts` |
 | **New payments get a check time.** A new payment's `next_check_at` is set at creation, so the sweep recovers it if the process dies before calling the PSP. | `api/orders.ts` |
 

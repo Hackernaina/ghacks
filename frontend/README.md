@@ -16,7 +16,7 @@ admin API endpoints are implemented in `backend/src/api/admin.ts`.
 
 ```bash
 pnpm install
-pnpm dev                                  # backend + stub PSPs + Postgres (see backend/README.md)
+pnpm dev                                  # backend + Person A's mocks + Postgres (see backend/README.md)
 pnpm dev:frontend                         # http://localhost:5173, #ops for the dashboard
 ```
 
@@ -40,7 +40,7 @@ What's there and what's left:
   - a detail panel showing the evidence timeline, ledger and cases
 
   The timeline is the piece to iterate on most. Its rendering is minimal; see shared §7 for the fuller guide (badges, "delivered N× counted once", late-arrival flags).
-- **Fault injection panel** (bottom of Ops) posts to `/admin/faults` on the mocks. It already works against the backend's stub PSPs, which implement the same flag names Person A's mocks will.
+- **Fault injection panel** (bottom of Ops) posts Person A's flags to `/admin/faults` on PSP A or B (`dropPercent`, `duplicatePercent`, `webhookDelayMs`, `bypassIdempotency`, `settlementMismatch`). It also has a reset button (`/admin/reset`).
 - **Not built yet:**
   - one-click demo scenario buttons. These depend on Person A's scenario scripts.
   - payments-list pagination in the UI. The API returns `nextCursor`.
