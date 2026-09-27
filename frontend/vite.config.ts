@@ -24,6 +24,6 @@ const proxy = {
 
 export default defineConfig({
   plugins: [react()],
-  server: { host: true, port: 5173, proxy },
-  preview: { host: true, port: 5173, proxy },
+  server: { host: true, port: 5173, proxy, allowedHosts: true },
+  preview: { host: true, port: 5173, proxy, allowedHosts: true },
 });
