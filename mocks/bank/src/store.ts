@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 // ---------------------------------------------------------------------------
 // Bank mock in-memory store
 // ---------------------------------------------------------------------------
@@ -9,6 +11,9 @@ export interface DebitEntry {
   amount: number;
   currency: string;
   credited_at: string; // ISO timestamp
+  /** Assigned once at insert so (statement_id, line_no) never changes between requests. */
+  statement_id: string;
+  line_no: number;
 }
 
 /** Fault configuration for the bank mock. */
@@ -28,8 +33,18 @@ let faultConfig: BankFaultConfig = {};
 // Debit store helpers
 // ---------------------------------------------------------------------------
 
-export function addDebit(entry: DebitEntry): void {
-  debitLog.set(entry.bankRef, entry);
+// A new id per process start: in-memory line numbers restart at 1, and
+// (statement_id, line_no) must never repeat for a different line.
+const BOOT_ID = randomUUID().slice(0, 6);
+const linesPerStatement = new Map<string, number>();
+
+export function addDebit(entry: Omit<DebitEntry, "statement_id" | "line_no">): DebitEntry {
+  const statement_id = `stmt_${entry.credited_at.slice(0, 10).replace(/-/g, "")}_${BOOT_ID}`;
+  const line_no = (linesPerStatement.get(statement_id) ?? 0) + 1;
+  linesPerStatement.set(statement_id, line_no);
+  const stored = { ...entry, statement_id, line_no };
+  debitLog.set(entry.bankRef, stored);
+  return stored;
 }
 
 /** Return all debits credited at or after `since` (inclusive). */
@@ -60,5 +75,6 @@ export function setFaultConfig(config: Partial<BankFaultConfig>): void {
 
 export function clearStore(): void {
   debitLog.clear();
+  linesPerStatement.clear();
   faultConfig = {};
 }

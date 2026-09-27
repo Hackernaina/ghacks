@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import type { WebhookPayload, WebhookType } from "@reconcile/shared";
+import type { ReportedStatus, WebhookPayload, WebhookType } from "@reconcile/shared";
 import type { PspPaymentResponse } from "@reconcile/shared";
 import { getFaultConfig } from "./store.js";
 
@@ -71,6 +71,8 @@ export interface FireWebhookOptions {
   webhookSecret: string;
   payment: PspPaymentResponse & { orderId: string };
   type?: WebhookType;
+  /** Overrides payment.status, e.g. REFUNDED for payment.refunded events. */
+  status?: ReportedStatus;
 }
 
 /**
@@ -82,7 +84,7 @@ export interface FireWebhookOptions {
  *                          SAME eventId after an additional 2 s
  */
 export function fireWebhook(opts: FireWebhookOptions): void {
-  const { pspId, webhookSecret, payment, type = "payment.succeeded" } = opts;
+  const { pspId, webhookSecret, payment, type = "payment.succeeded", status = payment.status } = opts;
 
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:3000";
   const targetUrl = `${backendUrl}/webhooks/${pspId}`;
@@ -99,7 +101,7 @@ export function fireWebhook(opts: FireWebhookOptions): void {
       orderId: payment.orderId,
       amount: payment.amount,
       currency: payment.currency,
-      status: payment.status, // ReportedStatus — "SUCCEEDED" | "FAILED" | ...
+      status, // ReportedStatus — "SUCCEEDED" | "FAILED" | "REFUNDED" | ...
     },
   };
 

@@ -81,16 +81,12 @@ export function buildBankServer(options?: BankServerOptions): FastifyInstance {
     const query = req.query as { since?: string };
     const entries = getDebits(query.since);
 
-    // statement_id: "stmt_" + YYYYMMDD of today
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const statementId = `stmt_${today}`;
-
     const rows = [BANK_STATEMENT_CSV_HEADER];
-    entries.forEach((entry, idx) => {
+    for (const entry of entries) {
       rows.push(
-        `${statementId},${idx + 1},${entry.psp_ref},${entry.amount},${entry.currency},CREDIT,${entry.credited_at}`
+        `${entry.statement_id},${entry.line_no},${entry.psp_ref},${entry.amount},${entry.currency},CREDIT,${entry.credited_at}`
       );
-    });
+    }
 
     reply.header("content-type", "text/csv; charset=utf-8");
     return reply.code(200).send(rows.join("\n") + "\n");

@@ -1,4 +1,4 @@
-import type { PspPaymentResponse, SettlementLine } from "@reconcile/shared";
+import type { PspPaymentResponse, PspRefundResponse, SettlementLine } from "@reconcile/shared";
 
 export interface FaultConfig {
   dropPercent?: number;
@@ -15,6 +15,9 @@ export const idempotencyStore = new Map<string, PspPaymentResponse>();
 
 // In-memory settlement log: lineKey -> SettlementLine
 export const settlementLog = new Map<string, SettlementLine>();
+
+// In-memory refunds: refund Idempotency-Key -> PspRefundResponse
+export const refundStore = new Map<string, PspRefundResponse>();
 
 // In-memory fault config
 let faultConfig: FaultConfig = {};
@@ -63,5 +66,6 @@ export function setFaultConfig(config: Partial<FaultConfig>): void {
 export function clearStore(): void {
   idempotencyStore.clear();
   settlementLog.clear();
+  refundStore.clear();
   faultConfig = {};
 }

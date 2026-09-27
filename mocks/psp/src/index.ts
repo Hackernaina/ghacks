@@ -4,13 +4,18 @@ import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   CreatePaymentRequest,
+  CreateRefundRequest,
   SETTLEMENT_CSV_HEADER,
   type PspPaymentResponse,
+  type PspRefundResponse,
 } from "@reconcile/shared";
+import { payOutToBank } from "./payout.js";
 import {
   addPayment,
   getPayment,
   addSettlement,
+  idempotencyStore,
+  refundStore,
   settlementLog,
   getSettlements,
   getFaultConfig,
@@ -20,6 +25,10 @@ import {
 } from "./store.js";
 import { fireWebhook } from "./webhooks.js";
 import { applyFaultMiddleware } from "./faults.js";
+
+// A new id per process start: in-memory line numbers restart at 1, and
+// (batch_id, line_no) must never repeat for a different line.
+const BOOT_ID = randomUUID().slice(0, 6);
 
 export interface PspServerOptions {
   pspId?: "psp_a" | "psp_b";
@@ -114,19 +123,21 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
       payment: { ...response, orderId: body.orderId },
     });
 
-    // Record settlement
+    // Record settlement, then pay it out to the merchant's bank
     const dateStr = createdAt.slice(0, 10).replace(/-/g, "");
-    addSettlement({
-      batch_id: `stl_${dateStr}_01`,
+    const settlement = {
+      batch_id: `stl_${dateStr}_${BOOT_ID}`,
       line_no: settlementLog.size + 1,
       psp_ref: pspRef,
       idempotency_key: idempotencyKey,
       order_id: body.orderId,
       amount: body.amount,
       currency: body.currency,
-      status: "SETTLED",
+      status: "SETTLED" as const,
       settled_at: createdAt,
-    });
+    };
+    addSettlement(settlement);
+    payOutToBank(settlement);
 
     return reply.code(200).send(response);
   });
@@ -148,6 +159,49 @@ export function buildPspServer(options?: PspServerOptions): FastifyInstance {
     }
 
     return reply.code(200).send(payment);
+  });
+
+  // POST /v1/refunds — idempotent by Idempotency-Key; fires payment.refunded
+  app.post("/v1/refunds", async (req, reply) => {
+    const key = req.headers["idempotency-key"];
+    if (!key || typeof key !== "string") {
+      return reply.code(400).send({
+        error: "MISSING_IDEMPOTENCY_KEY",
+        message: "Idempotency-Key header is required",
+      });
+    }
+    const bodyResult = CreateRefundRequest.safeParse(req.body);
+    if (!bodyResult.success) {
+      return reply.code(422).send({ error: "VALIDATION_ERROR", message: bodyResult.error.message });
+    }
+    const existing = refundStore.get(key.trim());
+    if (existing) return reply.code(200).send(existing);
+
+    const { pspRef, amount } = bodyResult.data;
+    const charge = [...idempotencyStore.values()].find((p) => p.pspRef === pspRef);
+    const settled = [...settlementLog.values()].find((s) => s.psp_ref === pspRef);
+    if (!charge || !settled) {
+      return reply.code(422).send({ error: "UNKNOWN_PSP_REF", message: `No charge ${pspRef}` });
+    }
+    if (amount <= 0 || amount > charge.amount) {
+      return reply.code(422).send({ error: "INVALID_AMOUNT", message: "Refund must be between 1 and the charge amount" });
+    }
+
+    const refund: PspRefundResponse = {
+      refundRef: `rf_${randomUUID().slice(0, 8)}`,
+      pspRef,
+      status: "SUCCEEDED",
+      amount,
+    };
+    refundStore.set(key.trim(), refund);
+    fireWebhook({
+      pspId,
+      webhookSecret,
+      payment: { ...charge, amount, orderId: settled.order_id },
+      type: "payment.refunded",
+      status: "REFUNDED",
+    });
+    return reply.code(200).send(refund);
   });
 
   // GET /v1/settlements?since=ISO_TIMESTAMP

@@ -68,7 +68,8 @@ export async function pollSettlements(pool: pg.Pool, config: Config, psp: PspId)
     const paymentId = await findPaymentId(pool, line.idempotency_key, line.psp_ref);
     const result = await recordEvidence(pool, {
       source: "SETTLEMENT",
-      sourceEventId: `${line.batch_id}:${line.line_no}`,
+      // Each PSP numbers its own batches, so the key is scoped by PSP.
+      sourceEventId: `${psp}:${line.batch_id}:${line.line_no}`,
       paymentId,
       psp,
       pspRef: line.psp_ref,
