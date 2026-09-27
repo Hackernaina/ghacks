@@ -1,0 +1,88 @@
+# `docker-compose up -d postgres`                → just the database (local dev with `pnpm dev`)
+# `COMPOSE_PARALLEL_LIMIT=1 docker-compose --profile stack up --build` → the whole system in containers
+#   (the limit serializes image builds; parallel tsc builds can exhaust a small Docker VM)
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: reconcile
+      POSTGRES_PASSWORD: reconcile
+      POSTGRES_DB: reconcile
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reconcile -d reconcile"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  backend:
+    profiles: [stack]
+    build: { context: ., dockerfile: backend/Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://reconcile:reconcile@postgres:5432/reconcile
+      PSP_A_URL: http://psp-a:4001
+      PSP_B_URL: http://psp-b:4002
+      BANK_URL: http://bank:4003
+      WEBHOOK_SECRET_PSP_A: dev-secret-psp-a
+      WEBHOOK_SECRET_PSP_B: dev-secret-psp-b
+    ports:
+      - "3000:3000"
+
+  psp-a:
+    profiles: [stack]
+    image: reconcile-mocks:local
+    build: { context: ., dockerfile: mocks/Dockerfile }
+    environment:
+      SERVICE: psp
+      PSP_ID: psp_a
+      PORT: "4001"
+      WEBHOOK_SECRET: dev-secret-psp-a
+      BACKEND_URL: http://backend:3000
+      BANK_URL: http://bank:4003
+    ports:
+      - "4001:4001"
+
+  psp-b:
+    profiles: [stack]
+    image: reconcile-mocks:local  # built by psp-a
+    pull_policy: never
+    environment:
+      SERVICE: psp
+      PSP_ID: psp_b
+      PORT: "4002"
+      WEBHOOK_SECRET: dev-secret-psp-b
+      BACKEND_URL: http://backend:3000
+      BANK_URL: http://bank:4003
+    ports:
+      - "4002:4002"
+
+  bank:
+    profiles: [stack]
+    image: reconcile-mocks:local  # built by psp-a
+    pull_policy: never
+    environment:
+      SERVICE: bank
+      PORT: "4003"
+    ports:
+      - "4003:4003"
+
+  frontend:
+    profiles: [stack]
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    depends_on: [backend]
+    environment:
+      BACKEND_URL: http://backend:3000
+      PSP_A_URL: http://psp-a:4001
+      PSP_B_URL: http://psp-b:4002
+      BANK_URL: http://bank:4003
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:

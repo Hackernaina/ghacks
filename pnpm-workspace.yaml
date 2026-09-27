@@ -1,0 +1,6 @@
+packages:
+  - "shared"
+  - "backend"
+  - "backend/dev/stub-psp"
+  - "frontend"
+  - "mocks/*"

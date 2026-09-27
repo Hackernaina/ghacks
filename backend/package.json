@@ -1,0 +1,37 @@
+{
+  "name": "@reconcile/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "bash scripts/dev.sh",
+    "start": "node dist/main.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "test": "vitest run --exclude '**/*.int.test.ts'",
+    "test:int": "vitest run -c vitest.int.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:api": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@reconcile/shared": "workspace:*",
+    "fastify": "^4.28.1",
+    "@fastify/cors": "^9.0.1",
+    "pg": "^8.12.0",
+    "pino": "^9.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/pg": "^8.11.6",
+    "fast-check": "^3.22.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.1"
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ]
+}
