@@ -50,6 +50,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   border-radius: 999px;
   background: #2e3348;
   font-size: 12px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .pill.ok { background: #1f6f4a; }
 .pill.warn { background: #8a5a12; }

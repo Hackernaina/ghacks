@@ -25,8 +25,30 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(await describeFailure(res));
   return res.json() as Promise<T>;
+}
+
+/**
+ * A short, readable message for a failed response. The backend answers with
+ * `{ error, message? }`; anything else (a proxy or host error page) is HTML and
+ * is reduced to the status line instead of being dumped into the UI.
+ */
+async function describeFailure(res: Response): Promise<string> {
+  const status = `${res.status} ${res.statusText}`.trim();
+  const body = await res.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(body) as { error?: string; message?: string };
+    const detail = [parsed.error, parsed.message].filter(Boolean).join(": ");
+    if (detail) return `${status}: ${detail}`;
+  } catch {
+    // not JSON
+  }
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return `${status}: service unreachable. Check that it is running and that the frontend's proxy target / API URL points at it.`;
+  }
+  if (!body || body.trimStart().startsWith("<")) return status;
+  return `${status}: ${body.slice(0, 200)}`;
 }
 
 const json = <T,>(path: string, init?: RequestInit) => request<T>(`${API_URL}${path}`, init);

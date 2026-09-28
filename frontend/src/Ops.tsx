@@ -14,13 +14,22 @@ export default function Ops() {
   const [stats, setStats] = useState<StatsView | null>(null);
   const [invariants, setInvariants] = useState<InvariantsView | null>(null);
   const [note, setNote] = useState("");
+  // These calls run from the poll timer and click handlers, so failures are
+  // shown here instead of escaping as unhandled promise rejections.
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function refresh() {
-    const list = await api.listPayments(stateFilter ? { state: stateFilter } : {});
-    setPayments(list.items);
-    setCases(await api.listReviewCases("OPEN"));
-    setStats(await api.stats());
-    setInvariants(await api.invariants());
+    try {
+      const list = await api.listPayments(stateFilter ? { state: stateFilter } : {});
+      setPayments(list.items);
+      setCases(await api.listReviewCases("OPEN"));
+      setStats(await api.stats());
+      setInvariants(await api.invariants());
+      setPollError(null);
+    } catch (e) {
+      setPollError(String(e));
+    }
   }
 
   useEffect(() => {
@@ -31,17 +40,30 @@ export default function Ops() {
   }, [stateFilter]);
 
   async function openPayment(id: string) {
-    setDetail(await api.getPaymentDetail(id));
+    try {
+      setDetail(await api.getPaymentDetail(id));
+      setActionError(null);
+    } catch (e) {
+      setActionError(String(e));
+    }
   }
 
   async function resolve(caseId: string, resolution: Parameters<typeof api.resolveCase>[1]) {
-    await api.resolveCase(caseId, resolution, note || undefined);
-    setNote("");
+    try {
+      await api.resolveCase(caseId, resolution, note || undefined);
+      setNote("");
+      setActionError(null);
+    } catch (e) {
+      setActionError(String(e));
+      return;
+    }
     await refresh();
   }
 
   return (
     <div className="page">
+      {pollError && <p className="pill bad">{pollError}</p>}
+      {actionError && <p className="pill bad">{actionError}</p>}
       <div className="card">
         <h2>Stats</h2>
         {stats && (
